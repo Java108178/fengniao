@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地图基本信息查询</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- 加载地图容器 -->
+    <div id="fengMap"></div>
+
+    <!--搜索框-->
+    <div class="search" id="search">
+        <input type="text" class="searchText" placeholder="搜索" id="searchText" onkeyup="onSearchFunc(this)" />
+        <ul id="hotwords" class="hotwords scroll">
+        </ul>
+    </div>
+
+    <!--分类搜索-->
+    <div id="btnsType" class="btnsType">
+        <!--业务分类-->
+        <button onClick="searchByTypeID(170100, '餐饮', this)">餐饮</button>
+        <button onClick="searchByTypeID(190501, '购物', this)">购物</button>
+        <!--公共设施分类-->
+        <button onClick="searchByTypeID(200004, '直梯', this)">直梯</button>
+        <button onClick="searchByTypeID(200002, '卫生间', this)">卫生间</button>
+    </div>
+
+    <!--分类搜索结果-->
+    <div id="typeTable" class="typeTable scroll">
+        <table width="100%" cellpadding="0" cellspacing="0">
+            <thead>
+                <tr>
+                    <th style="width: 30px">行号</th>
+                    <th>模型名称</th>
+                    <th>模型FID</th>
+                    <th>楼层ID</th>
+                    <th>x坐标</th>
+                    <th>y坐标</th>
+                    <th>z坐标</th>
+                </tr>
+            </thead>
+            <tbody id="tableCont"></tbody>
+        </table>
+    </div>
+
+    <!-- 引入fengmap -->
+    <script src="lib/fengmap.core.min.js"></script>
+    <script>
+        //获取版本号,设置title
+        document.title = '地图基本信息查询V' + fengmap.VERSION;
+
+        //定义全局map变量
+        var map = null;
+        //定义地图ID变量
+        var fmapID = '1321274646113083394';
+
+        //搜索列表Dom变量
+        var oHotwords;
+        //分类搜索结果列表
+        var typeTableDom = null;
+
+        //定义搜索分析类
+        var searchAnalyser = null;
+        //定义选中模型
+        var selectedModel = null;
+
+        window.onload = function () {
+            //加载地图
+            openMap();
+
+            //获取搜索列表Dom
+            oHotwords = document.getElementById('hotwords');
+            typeTableDom = document.getElementById('typeTable');
+        };
+
+        /**
+         * 打开地图
+         * */
+        function openMap() {
+            /**
+             * 初始化参数，默认使用在线数据，从蜂鸟视图数据服务器加载模型数据
+             * https://developer.fengmap.com/docs/js/v2.7.1/fengmap.FMMap.html
+             **/
+            var mapOptions = {
+                //必要，地图容器
+                container: document.getElementById('fengMap'),
+                //地图数据位置
+                mapServerURL: './data/' + fmapID,
+                //主题数据位置
+                mapThemeURL: './data/theme',
+                //设置主题
+                defaultThemeName: '3b91d03288204d02368dd4f68fc1f189',
+                //默认聚焦楼层
+                defaultFocusGroup: 2,
+                //初始显示楼层ID数组
+                defaultVisibleGroups: [2],
+                //是否支持单击模型高亮，false为单击时模型不高亮
+                modelSelectedEffect: false,
+                //必要，地图应用名称，通过蜂鸟云后台创建
+                appName: 'testMap',
+                //必要，地图应用密钥，通过蜂鸟云后台获取
+                key: 'b8cfac0873c3d803d45aaad0632d06ef'
+            };
+
+            //初始化地图对象
+            map = new fengmap.FMMap(mapOptions);
+
+            //打开Fengmap服务器的地图数据和主题
+            map.openMapById(fmapID, function (error) {
+                //打印错误信息
+                console.log(error);
+            });
+
+            //地图加载完成事件
+            map.on('loadComplete', function () {
+                console.log('地图加载完成！');
+                //展示搜索框
+                var searchCont = document.getElementById('search');
+                searchCont.style.display = 'block';
+
+                //分类搜索
+                var typeBtnsDom = document.getElementById('btnsType');
+                typeBtnsDom.style.display = 'block';
+
+                /**
+                 * 创建FMSearchAnalyser
+                 * fengmap.FMSearchAnalyser 是可根据类型、ID、楼层ID、名称、关键字模糊查找模型、公共设施、文本标签、自定义图层或所有图层的分析类。
+                 * https://developer.fengmap.com/docs/js/v2.7.1/fengmap.FMSearchAnalyser.html
+                 * */
+                searchAnalyser = new fengmap.FMSearchAnalyser(map);
+            });
+        }
+
+        /**
+         * 输入框监听keyup事件
+         * */
+        function onSearchFunc(self) {
+            var keyword = self.value.trim();
+            if (keyword !== '搜索' && keyword !== '') {
+                //通过查询条件进行地图数据搜索
+                var params = {};
+                params.keyword = keyword;
+                params.nodeType = fengmap.FMNodeType.MODEL;
+                var result = searchByParams(params);
+                //渲染结果列表
+                renderSearchResult(result);
+            } else {
+                //隐藏结果列表
+                oHotwords.style.display = 'none';
+            }
+
+            //重置分类搜索
+            resetTypeStatus();
+        }
+
+        /**
+         * 根据参数信息进行搜索
+         * keyword: 搜索关键字
+         * gids： 楼层id，默认为'all':所有楼层
+         * nodeType：fengmap.FMNodeType
+         * fid: 模型FID,整个建筑内唯一ID。
+         * */
+        function searchByParams(params) {
+            if (map == null) {
+                return;
+            }
+
+            /**
+             * fengmap.FMSearchRequest 是可设置查询类型，查询关键字的请求类
+             * https://developer.fengmap.com/docs/js/v2.7.1/fengmap.FMSearchRequest.html
+             * */
+            var searchRequest = new fengmap.FMSearchRequest();
+
+            //配置keyword参数
+            if (params.keyword && params.keyword != '') {
+                searchRequest.keyword = params.keyword;
+            }
+
+            //配置groupID参数
+            if (params.groupID) {
+                searchRequest.groupID = params.groupID
+            }
+
+            //配置FID参数
+            if (params.FID) {
+                searchRequest.FID = params.FID;
+            }
+            //配置typeID参数
+            if (params.typeID != null) {
+                searchRequest.typeID = params.typeID;
+            }
+
+            //配置nodeType参数
+            if (params.nodeType != null) {
+                searchRequest.nodeType = params.nodeType;
+            }
+
+            /*
+             //设置模糊搜索的语言类型，只针对keyword类型的搜索
+             searchRequest.keywordLanguageTypes([fengmap.FMLanguageType.EN,fengmap.FMLanguageType.ZH]);
+             */
+
+            /*//周边查询
+            searchRequest.circle = {
+                //查询范围中心点坐标
+                center: {
+                    x: map.center.x,
+                    y: map.center.y
+                },
+                radius: 50  //查询范围半径
+            };*/
+
+            /**
+             * 根据请求对象查询分析方法
+             * https://developer.fengmap.com/docs/js/v2.7.1/fengmap.FMSearchAnalyser.html#getQueryResult
+             * */
+            var sortRes = searchAnalyser.getQueryResult(searchRequest, ['SINGLE']);
+
+            console.log(searchRequest, sortRes);
+
+            return sortRes;
+        }
+
+        /**
+         * 根据FID搜索地图
+         * */
+        function findModelByFid(fid, name) {
+            var params = {};
+            params.FID = fid;
+            params.nodeType = fengmap.FMNodeType.MODEL;
+            var result = searchByParams(params);
+            if (result.length > 0) {
+                var model = result[0];
+                //打印model信息
+                console.log('选中model信息', model);
+                if (model != null) {
+
+                    //视野中心移动到指定位置,如果不是当前聚焦层，将先设置目标层为聚焦层在跳转
+                    var coord = {
+                        x: model.mapCoord.x,
+                        y: model.mapCoord.y,
+                        groupID: model.groupID
+                    };
+                    map.moveTo(coord);
+
+                    //添加marker
+                    addMarkers(model);
+
+                    //模型节点对象
+                    var target = model.target;
+                    //渲染当前设置的模型元素处于高亮状态
+                    if (target) {
+                        if (selectedModel && selectedModel.FID != target.FID) {
+                            selectedModel.selected = false;
+                        }
+                        target.selected = true;
+                        selectedModel = target;
+                    }
+
+                    //收起下拉列表
+                    oHotwords.style.display = 'none';
+                    var oSearchText = document.getElementById('searchText');
+                    oSearchText.value = name ? name : '';
+                }
+            }
+        }
+
+        /**
+         * 根据分类ID搜索地图数据
+         * */
+        function searchByTypeID(typeID, name, obj) {
+            //移除搜索相关marker
+            removeMarkers();
+            if (selectedModel) {
+                selectedModel.selected = false;
+            }
+
+            var oSearchText = document.getElementById('searchText');
+            oSearchText.value = '';
+
+            var buttons = document.getElementById("btnsType").children;
+            for (var i = 0; i < buttons.length; i++) {
+                var item = buttons[i];
+                if (item.classList.contains('active')) {
+                    item.classList.remove('active');
+                }
+            }
+
+            if (!obj.classList.contains('active')) {
+                obj.classList.add('active');
+            }
+
+            //调用搜索方法
+            var params = {};
+            params.groupID = map.focusGroupID; //当前聚焦楼层
+            params.typeID = typeID;
+            params.nodeType = fengmap.FMNodeType.MODEL;
+            var result = searchByParams(params);
+            console.log('分类搜索结果：', name, result);
+
+            var tableCont = document.getElementById('tableCont');
+            if (result && result.length > 0) {
+                var resultHtml = '';
+                for (var i = 0; i < result.length; i++) {
+                    var model = result[i].target;
+                    console.log('model', model);
+                    var num = parseInt(i) + parseInt(1);
+					if(!model.name){
+						continue;
+					}
+                    var modelName = model.name;
+                    resultHtml += '<tr onClick="findModelByFid(\'' + model.FID + '\', \'' + model.name + '\')"><td>' +
+                        num + '</td><td>' + modelName + '</td><td>' + model.FID + '</td><td>' + model.groupID +
+                        '</td><td>' + model.mapCoord.x + '</td><td>' + model.mapCoord.y + '</td><td>' + model.mapCoord
+                            .z + '</td></tr>';
+                }
+                tableCont.innerHTML = resultHtml;
+                typeTableDom.style.display = 'block';
+            } else {
+                tableCont.innerHTML = '';
+                typeTableDom.style.display = 'none';
+            }
+
+            //点击行选中行颜色
+            var trDom = tableCont.childNodes;
+            for (var i = 0; i < trDom.length; i++) {
+                trDom[i].addEventListener("click", function (event) {
+                    var parentNode = event.target.parentNode;
+                    for (var j = 0; j < trDom.length; j++) {
+                        if (parentNode == trDom[j]) {
+                            trDom[j].classList.add("active");
+                        } else {
+                            trDom[j].classList.remove("active");
+                        }
+                    }
+                })
+            }
+        }
+
+        /**
+         * 根据model对象添加Marker
+         * */
+        function addMarkers(model) {
+            //移除上次渲染的marker
+            removeMarkers();
+            //获取当前聚焦楼层
+            var group = map.getFMGroup(model.groupID);
+            //返回当前层中第一个imageMarkerLayer,如果没有，则自动创建
+            var layer = group.getOrCreateLayer('imageMarker');
+            //模型中心点坐标
+            var coord = model.mapCoord;
+            //创建imageMarker
+            var im = new fengmap.FMImageMarker({
+                x: coord.x,
+                y: coord.y,
+                height: 2,
+                url: './images/redImageMarker.png',
+                size: 32
+            });
+            layer.addMarker(im);
+        }
+
+        /**
+         * 删除Marker
+         * */
+        function removeMarkers() {
+            //获取多楼层Marker
+            map.getLayerByAlias(map.focusGroupID, 'imageMarker', function (layer) {
+                if (layer) {
+                    //移除该层的所有图片标注
+                    layer.removeAll();
+                }
+            });
+        }
+
+        /**
+         * 渲染搜索结果列表展示
+         * */
+        function renderSearchResult(data) {
+            //循环数据渲染demo
+            var resultHtml = '';
+            for (var i = 0; i < data.length; i++) {
+                var model = data[i];
+				if(!model.name){
+					continue;
+				}
+                resultHtml += '<li onClick="findModelByFid(\'' + model.FID + '\', \'' + model.name + '\')">' + model.name+ '</li>';
+            }
+            oHotwords.innerHTML = resultHtml;
+            oHotwords.style.display = 'block';
+        }
+
+        /**
+         * 重置分类搜索选择状态
+         */
+        function resetTypeStatus() {
+
+            //移除分类搜索相关元素和marker
+            removeMarkers();
+
+            if (selectedModel) {
+                selectedModel.selected = false;
+            }
+
+            //取消分类搜索选中状态
+            var buttons = document.getElementById("btnsType").children;
+            for (var i = 0; i < buttons.length; i++) {
+                var item = buttons[i];
+                if (item.classList.contains('active')) {
+                    item.classList.remove('active');
+                }
+            }
+
+            //隐藏分类搜索列表
+            var tableCont = document.getElementById('tableCont');
+            tableCont.innerHTML = '';
+            typeTableDom.style.display = 'none';
+        }
+    </script>
+</body>
+
+</html>

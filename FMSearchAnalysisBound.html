@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>周边查询</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<!-- <style>
+    .mask {
+        position: absolute;
+        width: 1180px;
+        height: 800px;
+        opacity: 0.1;
+        background: #ffffff;
+        z-index: 99;
+    }
+    #myCanvas {
+        position: absolute;
+        width: 1180px;
+        height: 800px;
+        z-index: 100;
+    }
+    .fengMap {
+        position: absolute;
+        z-index: -1;
+    }
+</style> -->
+
+<body>
+    <!-- <div class="mask">
+        <canvas id="myCanvas" style="border:1px solid #d3d3d3;">
+            Your browser does not support the HTML5 canvas tag.
+        </canvas>
+        <button id="up">增大</button>
+        <button id="down">减小</button>
+        <button id="cancel">撤销</button>
+        <button id="clear">清空</button>
+    </div> -->
+    <!-- 加载地图容器 -->
+    <div id="fengMap"></div>
+    
+    <!--周边查询-->
+    <div id="boundSearch" class="boundSearch">
+        <label>半径：</label>
+        <input type="text" name="radius" id="radius" onkeyup="this.value = this.value.replace(/\D/g,'')"
+            onafterpaste="this.value = this.value.replace(/\D/g,'')">&nbsp;米
+        <button onClick="searchByRadius()">周边查询</button>
+        <button onClick="">选择</button>
+    </div>
+
+    <!--查询结果-->
+    <div id="resTable" class="resTable scroll">
+        <table width="100%" cellpadding="0" cellspacing="0">
+            <thead>
+                <tr>
+                    <th style="width: 30px">行号</th>
+                    <th>模型名称</th>
+                    <th>模型FID</th>
+                    <th>楼层ID</th>
+                    <th>x坐标</th>
+                    <th>y坐标</th>
+                    <th>z坐标</th>
+                </tr>
+            </thead>
+            <tbody id="tableCont"></tbody>
+        </table>
+    </div>
+
+    <!-- 引入fengmap -->
+    <script src="lib/fengmap.core.min.js"></script>
+    <script>
+        //获取版本号,设置title
+        document.title = '周边查询V' + fengmap.VERSION;
+
+        //定义全局map变量
+        let map = null;
+        //定义地图ID变量
+        const fmapID = '1321274646113083394';
+
+        const array = [];
+        // 点击位置的x坐标
+        let xCenter = null;
+        // 点击位置的y坐标
+        let yCenter = null;
+        let searchRes = [];
+
+        //定义多边形
+        let polygonLayer = null;
+        //搜索结果列表
+        let resTableDom = null;
+        //定义搜索分析类
+        let searchAnalyser = null;
+
+        //定义选中模型
+        let selectedModel = null;
+
+        window.onload = function () {
+            //加载地图
+            openMap();
+
+            //获取搜索列表Dom
+            document.getElementById('boundSearch').style.display = 'block';
+            resTableDom = document.getElementById('resTable');
+        };
+
+        /**
+         * 打开地图
+         * */
+        function openMap() {
+            const mapOptions = {
+                //必要，地图容器
+                container: document.getElementById('fengMap'),
+                //地图数据位置
+                mapServerURL: './data/' + fmapID,
+                //主题数据位置
+                mapThemeURL: './data/theme',
+                //设置主题
+                defaultThemeName: '3b91d03288204d02368dd4f68fc1f189',
+                //默认聚焦楼层
+                defaultFocusGroup: 2,
+                //初始显示楼层ID数组
+                defaultVisibleGroups: [2],
+                //是否支持单击模型高亮，false为单击时模型不高亮
+                modelSelectedEffect: true,
+                //必要，地图应用名称，通过蜂鸟云后台创建
+                appName: 'testMap',
+                //必要，地图应用密钥，通过蜂鸟云后台获取
+                key: 'b8cfac0873c3d803d45aaad0632d06ef'
+            };
+
+            //初始化地图对象
+            map = new fengmap.FMMap(mapOptions);
+
+            //打开Fengmap服务器的地图数据和主题
+            map.openMapById(fmapID, function (error) {
+                //打印错误信息
+                console.log(error);
+            });
+
+            //地图加载完成事件
+            map.on('loadComplete', function () {
+                console.log('地图加载完成！');
+                //展示搜索框
+                let searchCont = document.getElementById('boundSearch');
+                searchCont.style.display = 'block';
+
+                searchAnalyser = new fengmap.FMSearchAnalyser(map);
+                console.log(searchAnalyser);
+            });
+
+            map.on('viewChanged', function(event) {
+                console.log('视角变化事件', event);
+            });
+
+            map.on('mapClickNode', function(event) {
+                console.log(event);
+                
+                x = event.mapCoord && event.mapCoord.x;
+                y = event.mapCoord && event.mapCoord.y;
+
+                if (event.nodeType === fengmap.FMNodeType.MODEL) {
+                    let model = event.target;
+                    let index = array.indexOf(model.FID);
+                    if (index != -1) {
+                        //将选中元素从数组中移除
+                        array.splice(index, 1);
+                        //渲染model恢复回主题中的设置
+                        setModelToDefault(model);
+                    } else {
+                        //将选中元素添加到数组中
+                        array.push(model.FID);
+                        // 渲染model为自定义颜色
+                        setModelRender(model);
+                    }
+                }
+            });
+
+            // map.setAutoRotateBymodel(true);
+        }
+
+        /**
+         * 设置model颜色、透明度、边线颜色
+         * */
+         function setModelRender(model) {
+            let modelColor = '#FFB6C1'; //模型颜色
+            let lineColor = '#0000CD'; //模型边线颜色
+            let alpha = 1; //颜色透明度
+            if (model) {
+                //修改模型颜色及透明度
+                model.setColor(modelColor, alpha);
+                //修改模型边线的颜色及透明度
+                model.setStrokeColor(lineColor, alpha);
+            }
+        }
+
+        /**
+         * 修改model恢复到主题中的设置
+         * */
+        function setModelToDefault(model) {
+            if (model) {
+                //将模型的颜色及透明度恢复回主题中的设置
+                model.setColorToDefault();
+                //将模型边线的颜色及透明度恢复回主题中的设置
+                model.setStrokeColorToDefault();
+            }
+        }
+
+        /**
+         * 周边查询
+         **/
+        function searchByRadius() {
+            if (!x || !y) return;
+            //重置页面渲染
+            resetRender();
+
+            //获取半径值
+            let radius = document.getElementById('radius').value;
+            radius = parseInt(radius);
+            if (isNaN(radius) || radius < 0) {
+                return;
+            }
+
+            console.log('x', x, 'y', y);
+
+            //创建搜索条件对象
+            const requestParam = {};
+            requestParam.groupID = map.focusGroupID;
+            requestParam.nodeType = fengmap.FMNodeType.MODEL;
+            requestParam.circle = {
+                //查询范围中心点坐标
+                center: {
+                    x: x,
+                    y: y
+                },
+                radius: radius //查询范围半径
+            };
+            searchRes = searchByParams(requestParam);
+
+            //渲染搜索结果表格
+            renderSearchResult(searchRes);
+
+            //创建圆形标注
+            addCircleMarker(x, y, radius);
+
+            //添加marker
+            if (searchRes.length > 0) {
+                for (let i = 0; i < searchRes.length; i++) {
+                    let model = searchRes[i];
+                    //添加marker
+                    // addMarkers(model);
+                    console.log('1111', model.target)
+                    setModelRender(model.target);
+                }
+            }
+        }
+
+        /**
+         * 重置页面渲染
+         **/
+        function resetRender() {
+
+            //移除marker
+            removeMarkers();
+
+            //移除polygonMarker
+            removePolygonMarkers();
+
+            // 选中颜色还原
+            if (searchRes.length) {
+                for (let i = 0; i < searchRes.length; i++) {
+                    let model = searchRes[i];
+                    //添加marker
+                    // addMarkers(model);
+                    setModelToDefault(model.target);
+                }
+            }
+
+            //隐藏搜索列表
+            resTableDom.style.display = 'none';
+        }
+
+        /**
+         * 根据参数信息进行搜索
+         * keyword: 搜索关键字
+         * gids： 楼层id，'all':所有楼层
+         * nodeType：fengmap.FMNodeType
+         * fid: 模型FID,整个建筑内唯一ID
+         * */
+        function searchByParams(params) {
+            if (map == null) {
+                return;
+            }
+
+            /**
+             * fengmap.FMSearchRequest 是可设置查询类型，查询关键字的请求类
+             * https://developer.fengmap.com/docs/js/v2.7.1/fengmap.FMSearchRequest.html
+             * */
+            let searchRequest = new fengmap.FMSearchRequest();
+
+            //配置groupID参数
+            if (params.groupID) {
+                searchRequest.groupID = params.groupID
+            }
+
+            //配置FID参数
+            if (params.FID) {
+                searchRequest.FID = params.FID;
+            }
+
+            //配置nodeType参数
+            if (params.nodeType != null) {
+                searchRequest.nodeType = params.nodeType;
+            }
+
+            //周边查询
+            if (params.circle) {
+                searchRequest.circle = params.circle;
+            }
+
+            /**
+             * 根据请求对象查询分析方法
+             * https://developer.fengmap.com/docs/js/v2.7.1/fengmap.FMSearchAnalyser.html#getQueryResult
+             * */
+            let searchType = ['SINGLE'];
+            if (params.circle) {
+                searchType.push('CIRCLE');
+            }
+            let sortRes = searchAnalyser.getQueryResult(searchRequest, searchType);
+
+            return sortRes;
+        }
+
+        /**
+         * 根据FID搜索地图
+         * */
+        function findModelByFid(fid) {
+            const params = {};
+            params.FID = fid;
+            params.nodeType = fengmap.FMNodeType.MODEL;
+            let result = searchByParams(params);
+            if (result.length > 0) {
+                let model = result[0];
+                //打印model信息
+                console.log('选中model信息', model);
+                if (model != null) {
+
+                    //视野中心移动到指定位置,如果不是当前聚焦层，将先设置目标层为聚焦层在跳转
+                    const coord = {
+                        x: model.mapCoord.x,
+                        y: model.mapCoord.y,
+                        groupID: model.groupID
+                    };
+                    map.moveTo(coord);
+
+                    //渲染当前设置的模型元素处于高亮状态
+                    let target = model.target;
+                    if (target) {
+                        if (selectedModel && selectedModel.FID != target.FID) {
+                            selectedModel.selected = false;
+                        }
+                        target.selected = true;
+                        selectedModel = target;
+                    }
+                }
+            }
+        }
+
+        /**
+         * 根据model对象添加Marker
+         * */
+        function addMarkers(model) {
+            //获取当前聚焦楼层
+			if (model.typeID === 300000) {
+				//其他操作
+				return;
+			}
+            let group = map.getFMGroup(model.groupID);
+            //返回当前层中第一个imageMarkerLayer,如果没有，则自动创建
+            let layer = group.getOrCreateLayer('imageMarker');
+            //模型中心点坐标
+            let coord = model.mapCoord;
+            //创建imageMarker
+            let im = new fengmap.FMImageMarker({
+                x: coord.x,
+                y: coord.y,
+                height: 2,
+                url: './images/redImageMarker.png',
+                size: 32
+            });
+            layer.addMarker(im);
+        }
+
+        /**
+         * 删除Marker
+         * */
+        function removeMarkers() {
+            //获取多楼层Marker
+            map.getLayerByAlias(map.focusGroupID, 'imageMarker', function (layer) {
+                if (layer) {
+                    //移除该层的所有图片标注
+                    layer.removeAll();
+                }
+            });
+        }
+
+        // 重置颜色
+        function resetDefaultColor() {
+            console.log(map, polygonLayer);
+        }
+
+        /**
+         * 删除FMPolygonMarker
+         * */
+        function removePolygonMarkers() {
+            //获取多楼层Marker
+            if (!polygonLayer) return;
+            polygonLayer.removeAll();
+        }
+
+        /**
+         * 渲染搜索结果列表展示
+         * */
+        function renderSearchResult(result) {
+            let tableCont = document.getElementById('tableCont');
+            if (result && result.length > 0) {
+                let resultHtml = '';
+                for (let i = 0; i < result.length; i++) {
+                    let model = result[i];
+					if(!model.name){
+						continue;
+					}
+                    let num = parseInt(i) + parseInt(1);
+                    let modelName = model.name;
+                    resultHtml += '<tr onClick="findModelByFid(\'' + model.FID + '\')"><td>' + num + '</td><td>' +
+                        modelName + '</td><td>' + model.FID + '</td><td>' + model.groupID + '</td><td>' + model.mapCoord
+                            .x + '</td><td>' + model.mapCoord.y + '</td><td>' + model.mapCoord.z + '</td></tr>';
+                }
+                tableCont.innerHTML = resultHtml;
+                resTableDom.style.display = 'block';
+            } else {
+                tableCont.innerHTML = '';
+                resTableDom.style.display = 'none';
+            }
+
+            //点击行选中行颜色
+            let trDom = tableCont.childNodes;
+            for (let i = 0; i < trDom.length; i++) {
+                trDom[i].addEventListener("click", function (event) {
+                    let parentNode = event.target.parentNode;
+                    for (let j = 0; j < trDom.length; j++) {
+                        if (parentNode == trDom[j]) {
+                            trDom[j].classList.add("active");
+                        } else {
+                            trDom[j].classList.remove("active");
+                        }
+                    }
+                })
+            }
+        }
+
+        /**
+         * 创建圆形标注
+         **/
+        function addCircleMarker(x, y, radius) {
+            //获取当前聚焦楼层
+            let group = map.getFMGroup(map.focusGroupID);
+            //创建PolygonMarkerLayer
+            if (!polygonLayer) {
+                polygonLayer = new fengmap.FMPolygonMarkerLayer();
+                group.addLayer(polygonLayer);
+            } else {
+                polygonLayer.removeAll();
+            }
+            console.log(x, y);
+            let circleMaker = new fengmap.FMPolygonMarker({
+                //设置颜色
+                color: '#3CF9DF',
+                //设置透明度
+                alpha: 0.3,
+                //设置边框线的宽度
+                lineWidth: 3,
+                //设置高度
+                height: 3,
+                //设置圆形中心点坐标
+                points: {
+                    //设置为圆形
+                    type: 'circle',
+                    //设置此形状的中心坐标
+                    center: {
+                        x: x,
+                        y: y
+                    },
+                    //设置半径
+                    radius: radius,
+                    //设置段数，默认为40段
+                    segments: 40
+                }
+            });
+            polygonLayer.addMarker(circleMaker);
+        }
+        </script>
+        <!-- <script>
+            const myCanvas = document.getElementById("myCanvas");
+            const ctx = myCanvas.getContext("2d");
+            const scaleStep = 1.05;
+            const minWidth = 1180, minHeight = 800, maxWidth = 9000, maxHeight = 7000;
+            const img = document.createElement('img');
+            const elementWidth = 1180,elementHeight=800;
+            let startx,//起始x坐标
+                starty,//起始y坐标
+                flag,//是否点击鼠标的标志
+                x,
+                y,
+                leftDistance,
+                topDistance,
+                op = 0,//op操作类型 0 无操作 1 画矩形框 2 拖动矩形框
+                scale = 1,
+                type = 0;
+            let layers = [];//图层
+            let currentR;//当前点击的矩形框
+            img.src = 'png';
+            img.onload = function(){
+                myCanvas.style.backgroundImage = "url("+img.src+")";
+                myCanvas.style.backgroundSize = `${myCanvas.width}px ${myCanvas.height}px`;
+            }
+            document.querySelector('#up').onclick = function(){
+                if (myCanvas.width <= maxWidth && myCanvas.height <= maxHeight) {
+                    myCanvas.width *= scaleStep;
+                    myCanvas.height *= scaleStep;
+                    scale= myCanvas.height / minHeight;
+                    ctx.scale(scale,scale)
+                    myCanvas.style.backgroundSize = `${myCanvas.width}px ${myCanvas.height}px`;
+                    reshow()
+                }
+            }
+            document.querySelector('#down').onclick = function(){
+                if (myCanvas.width >= minWidth && myCanvas.height >= minHeight){
+                    myCanvas.width /= scaleStep;
+                    myCanvas.height /= scaleStep;
+                    scale = myCanvas.height / minHeight;
+                    ctx.scale(scale,scale);
+                    myCanvas.style.backgroundSize = `${myCanvas.width}px ${myCanvas.height}px`;
+                    reshow();
+                }
+                
+            }
+            document.querySelector('#cancel').onclick = function(){
+                layers.pop();
+                ctx.clearRect(0, 0, elementWidth, elementHeight);
+                reshow();
+            }
+            document.querySelector('#clear').onclick = function(){
+                layers = [];
+                ctx.clearRect(0, 0, elementWidth, elementHeight);
+                reshow();
+            }
+            function resizeLeft(rect){
+                myCanvas.style.cursor = "w-resize";
+                if (flag && op == 0) {op=3;}
+                if (flag && op == 3) {
+                    if (!currentR) {
+                        currentR = rect
+                    }
+                    currentR.x1 = x
+                    currentR.width = currentR.x2-currentR.x1
+                }
+            }
+            function resizeTop(rect){
+                myCanvas.style.cursor = "s-resize";
+                if (flag && op == 0) {
+                    op=4;
+                }
+                if(flag && op == 4){
+                    if (!currentR) {
+                        currentR=rect
+                    }
+                    currentR.y1 = y
+                    currentR.height = currentR.y2-currentR.y1
+                }
+            }
+            function resizeWidth(rect){
+                myCanvas.style.cursor = "w-resize";
+                if (flag && op == 0) {
+                    op=5;
+                }
+                if (flag && op == 5) {
+                    if (!currentR) {
+                        currentR = rect
+                    }
+                    currentR.x2 = x
+                    currentR.width = currentR.x2-currentR.x1
+                }
+            }
+            function resizeHeight(rect){
+                myCanvas.style.cursor = "s-resize";
+                if (flag && op == 0) {
+                    op = 6;
+                }
+                if (flag && op == 6) {
+                    if (!currentR) {
+                        currentR = rect;
+                    }
+                    currentR.y2 = y
+                    currentR.height = currentR.y2 - currentR.y1;
+                }
+            }
+            function resizeLT(rect){
+                myCanvas.style.cursor = "se-resize";
+                if (flag && op == 0) {
+                    op = 7;
+                }
+                if (flag && op == 7) {
+                    if (!currentR) {
+                        currentR = rect;
+                    }
+                    currentR.x1 = x
+                    currentR.y1 = y
+                    currentR.height = currentR.y2-currentR.y1;
+                    currentR.width = currentR.x2-currentR.x1;
+                }
+            }
+            function resizeWH(rect){
+                myCanvas.style.cursor = "se-resize";
+                if (flag && op == 0) {
+                    op=8;
+                }
+                if (flag && op == 8) {
+                    if (!currentR) {
+                        currentR = rect;
+                    }
+                    currentR.x2 = x
+                    currentR.y2 = y
+                    currentR.height = currentR.y2 - currentR.y1
+                    currentR.width = currentR.x2 - currentR.x1
+                }
+            }
+            function resizeLH(rect){
+                myCanvas.style.cursor="ne-resize";
+                if(flag&&op==0){op=9;}
+                if(flag&&op==9){
+                    if(!currentR){currentR=rect}
+                    currentR.x1=x
+                    currentR.y2=y
+                    currentR.height=currentR.y2-currentR.y1
+                    currentR.width=currentR.x2-currentR.x1
+                }
+            }
+            function resizeWT(rect){
+                myCanvas.style.cursor="ne-resize";
+                if(flag&&op==0){op=10;}
+                if(flag&&op==10){
+                    if(!currentR){currentR=rect}
+                    currentR.x2=x
+                    currentR.y1=y
+                    currentR.height=currentR.y2-currentR.y1
+                    currentR.width=currentR.x2-currentR.x1
+                }
+            }
+            function reshow(x,y){
+                    let allNotIn=1;
+                    layers.forEach(item=>{
+                        ctx.beginPath();
+                        ctx.rect(item.x1,item.y1,item.width,item.height);
+                        ctx.strokeStyle=item.strokeStyle
+                        if(x>=(item.x1-25/scale)&&x<=(item.x1+25/scale)&&y<=(item.y2-25/scale)&&y>=(item.y1+25/scale)){
+                                resizeLeft(item);
+                        }else if(x>=(item.x2-25/scale)&&x<=(item.x2+25/scale)&&y<=(item.y2-25/scale)&&y>=(item.y1+25/scale)){
+                                resizeWidth(item);
+                        }else if(y>=(item.y1-25/scale)&&y<=(item.y1+25/scale)&&x<=(item.x2-25/scale)&&x>=(item.x1+25/scale)){
+                                resizeTop(item);
+                        }else if(y>=(item.y2-25/scale)&&y<=(item.y2+25/scale)&&x<=(item.x2-25/scale)&&x>=(item.x1+25/scale)){
+                                resizeHeight(item);
+                        }else if(x>=(item.x1-25/scale)&&x<=(item.x1+25/scale)&&y<=(item.y1+25/scale)&&y>=(item.y1-25/scale)){
+                                resizeLT(item);
+                        }else if(x>=(item.x2-25/scale)&&x<=(item.x2+25/scale)&&y<=(item.y2+25/scale)&&y>=(item.y2-25/scale)){
+                                resizeWH(item);
+                        }else if(x>=(item.x1-25/scale)&&x<=(item.x1+25/scale)&&y<=(item.y2+25/scale)&&y>=(item.y2-25/scale)){
+                                resizeLH(item);
+                        }else if(x>=(item.x2-25/scale)&&x<=(item.x2+25/scale)&&y<=(item.y1+25/scale)&&y>=(item.y1-25/scale)){
+                                resizeWT(item);
+                        }
+                        if(ctx.isPointInPath(x*scale,y*scale)){
+                            render(item);
+                            allNotIn=0;
+                        }
+                        ctx.stroke();
+                    })
+                if(flag&&allNotIn&&op<3){
+                    op=1
+                }
+                
+            }
+            function render(rect){
+                myCanvas.style.cursor="move";
+                if(flag&&op==0){op=2;}
+                if(flag&&op==2){
+                    if(!currentR){currentR=rect}
+                    currentR.x2+=x-leftDistance-currentR.x1
+                    currentR.x1+=x-leftDistance-currentR.x1
+                    currentR.y2+=y-topDistance-currentR.y1
+                    currentR.y1+=y-topDistance-currentR.y1
+                }
+            }
+            function isPointInRetc(x,y){
+                let len=layers.length;
+                for(let i=0;i<len;i++){
+                    if(layers[i].x1<x&&x<layers[i].x2&&layers[i].y1<y&&y<layers[i].y2){
+                        return layers[i];
+                    }
+                }
+            }
+            function fixPosition(position){
+                if(position.x1>position.x2){
+                    let x=position.x1;
+                    position.x1=position.x2;
+                    position.x2=x;
+                }
+                if(position.y1>position.y2){
+                    let y=position.y1;
+                    position.y1=position.y2;
+                    position.y2=y;
+                }
+                position.width=position.x2-position.x1
+                position.height=position.y2-position.y1
+                if(position.width<50||position.height<50){
+                    position.width=60;
+                    position.height=60;
+                    position.x2+=position.x1+60;
+                    position.y2+=position.y1+60;
+                }
+                return position
+            }
+            let mousedown=function(e){
+                startx=(e.pageX-myCanvas.offsetLeft+myCanvas.parentElement.scrollLeft)/scale;
+                starty=(e.pageY-myCanvas.offsetTop+myCanvas.parentElement.scrollTop)/scale;
+                currentR=isPointInRetc(startx,starty);
+                if(currentR){
+                    leftDistance=startx-currentR.x1;
+                    topDistance=starty-currentR.y1;
+                }
+                ctx.strokeRect(x,y,0,0);
+                ctx.strokeStyle="#0000ff";
+                flag=1;
+            }
+            let mousemove=function(e){
+                x=(e.pageX-myCanvas.offsetLeft+myCanvas.parentElement.scrollLeft)/scale;
+                y=(e.pageY-myCanvas.offsetTop+myCanvas.parentElement.scrollTop)/scale;
+                ctx.save();
+                ctx.setLineDash([5])
+                myCanvas.style.cursor="default";
+                ctx.clearRect(0,0,elementWidth,elementHeight)
+                if(flag&&op==1){
+                    ctx.strokeRect(startx,starty,x-startx,y-starty);
+                }
+                ctx.restore();
+                reshow(x,y);
+            }
+            let mouseup=function(e){
+                if(op==1){
+                    layers.push(fixPosition({
+                        x1:startx,
+                        y1:starty,
+                        x2:x,
+                        y2:y,
+                        strokeStyle:'#0000ff',
+                        type:type
+                    }))
+                }else if(op>=3){
+                    fixPosition(currentR)
+                }
+                currentR=null;
+                flag=0;
+                reshow(x,y);
+                op=0;
+            }
+            myCanvas.onmouseleave=function(){
+                myCanvas.onmousedown=null;
+                myCanvas.onmousemove=null;
+                myCanvas.onmouseup=null;
+            }
+            myCanvas.onmouseenter=function(){
+                myCanvas.onmousedown=mousedown;
+                myCanvas.onmousemove=mousemove;
+                document.onmouseup=mouseup;
+            }
+        </script> -->
+</body>
+
+</html>
