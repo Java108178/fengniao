@@ -230,35 +230,35 @@
       function searchByRadius() {
         if (!x || !y || !selectR) return;
         if (point.length < 2) return;
-        //重置页面渲染
+        // 重置页面渲染
         resetRender();
 
-        //创建搜索条件对象
+        // 创建搜索条件对象
         const requestParam = {};
         requestParam.groupID = map.focusGroupID;
         requestParam.nodeType = fengmap.FMNodeType.MODEL;
         requestParam.circle = {
-          //查询范围中心点坐标
+          // 查询范围中心点坐标
           center: {
             x: x,
             y: y,
           },
-          // radius: radius //查询范围半径
-          radius: selectR, //查询范围半径
+          // 查询范围半径
+          radius: selectR
         };
         searchRes = searchByParams(requestParam);
 
-        //渲染搜索结果表格
+        // 渲染搜索结果表格
         renderSearchResult(searchRes);
 
-        //创建圆形标注
+        // 创建圆形标注
         addCircleMarker(x, y, selectR);
 
-        //添加marker
+        // 添加marker
         if (searchRes.length > 0) {
           for (let i = 0; i < searchRes.length; i++) {
             let model = searchRes[i];
-            //添加marker
+            // 添加marker
             // addMarkers(model);
             setModelRender(model.target);
           }
@@ -269,10 +269,10 @@
        * 重置页面渲染
        **/
       function resetRender() {
-        //移除marker
+        // 移除marker
         removeMarkers();
 
-        //移除polygonMarker
+        // 移除polygonMarker
         removePolygonMarkers();
 
         // 选中颜色还原
@@ -284,7 +284,7 @@
           }
         }
 
-        //隐藏搜索列表
+        // 隐藏搜索列表
         resTableDom.style.display = "none";
       }
 
@@ -302,27 +302,27 @@
 
         let searchRequest = new fengmap.FMSearchRequest();
 
-        //配置groupID参数
+        // 配置groupID参数
         if (params.groupID) {
           searchRequest.groupID = params.groupID;
         }
 
-        //配置FID参数
+        // 配置FID参数
         if (params.FID) {
           searchRequest.FID = params.FID;
         }
 
-        //配置nodeType参数
+        // 配置nodeType参数
         if (params.nodeType != null) {
           searchRequest.nodeType = params.nodeType;
         }
 
-        //周边查询（圆形区域）
+        // 周边查询（圆形区域）
         if (params.circle) {
           searchRequest.circle = params.circle;
         }
 
-        //周边查询（矩形区域）
+        // 周边查询（矩形区域）
         if (params.polygon) {
           searchRequest.polygon = params.polygon;
         }
@@ -350,10 +350,10 @@
         let result = searchByParams(params);
         if (result.length > 0) {
           let model = result[0];
-          //打印model信息
+          // 打印model信息
           console.log("选中model信息", model);
           if (model != null) {
-            //视野中心移动到指定位置,如果不是当前聚焦层，将先设置目标层为聚焦层在跳转
+            // 视野中心移动到指定位置,如果不是当前聚焦层，将先设置目标层为聚焦层在跳转
             const coord = {
               x: model.mapCoord.x,
               y: model.mapCoord.y,
@@ -361,7 +361,7 @@
             };
             map.moveTo(coord);
 
-            //渲染当前设置的模型元素处于高亮状态
+            // 渲染当前设置的模型元素处于高亮状态
             let target = model.target;
             if (target) {
               if (selectedModel && selectedModel.FID != target.FID) {
@@ -378,17 +378,17 @@
        * 根据model对象添加Marker
        * */
       function addMarkers(model) {
-        //获取当前聚焦楼层
+        // 获取当前聚焦楼层
         if (model.typeID === 300000) {
-          //其他操作
+          // 其他操作
           return;
         }
         let group = map.getFMGroup(model.groupID);
-        //返回当前层中第一个imageMarkerLayer,如果没有，则自动创建
+        // 返回当前层中第一个imageMarkerLayer,如果没有，则自动创建
         let layer = group.getOrCreateLayer("imageMarker");
-        //模型中心点坐标
+        // 模型中心点坐标
         let coord = model.mapCoord;
-        //创建imageMarker
+        // 创建imageMarker
         let im = new fengmap.FMImageMarker({
           x: coord.x,
           y: coord.y,
@@ -403,10 +403,10 @@
        * 删除Marker
        * */
       function removeMarkers() {
-        //获取多楼层Marker
+        // 获取多楼层Marker
         map.getLayerByAlias(map.focusGroupID, "imageMarker", function (layer) {
           if (layer) {
-            //移除该层的所有图片标注
+            // 移除该层的所有图片标注
             layer.removeAll();
           }
         });
@@ -416,7 +416,7 @@
        * 删除FMPolygonMarker
        * */
       function removePolygonMarkers() {
-        //获取多楼层Marker
+        // 获取多楼层Marker
         if (!polygonLayer) return;
         polygonLayer.removeAll();
       }
@@ -461,7 +461,7 @@
           resTableDom.style.display = "none";
         }
 
-        //点击行选中行颜色
+        // 点击行选中行颜色
         let trDom = tableCont.childNodes;
         for (let i = 0; i < trDom.length; i++) {
           trDom[i].addEventListener("click", function (event) {
@@ -481,9 +481,9 @@
        * 创建圆形标注
        **/
       function addCircleMarker(x, y, radius) {
-        //获取当前聚焦楼层
+        // 获取当前聚焦楼层
         let group = map.getFMGroup(map.focusGroupID);
-        //创建PolygonMarkerLayer
+        // 创建PolygonMarkerLayer
         if (!polygonLayer) {
           polygonLayer = new fengmap.FMPolygonMarkerLayer();
           group.addLayer(polygonLayer);
@@ -491,26 +491,26 @@
           polygonLayer.removeAll();
         }
         let circleMaker = new fengmap.FMPolygonMarker({
-          //设置颜色
+          // 设置颜色
           color: "#3CF9DF",
-          //设置透明度
+          // 设置透明度
           alpha: 0.3,
-          //设置边框线的宽度
+          // 设置边框线的宽度
           lineWidth: 3,
-          //设置高度
+          // 设置高度
           height: 3,
-          //设置圆形中心点坐标
+          // 设置圆形中心点坐标
           points: {
-            //设置为圆形
+            // 设置为圆形
             type: "circle",
-            //设置此形状的中心坐标
+            // 设置此形状的中心坐标
             center: {
               x: x,
               y: y,
             },
-            //设置半径
+            // 设置半径
             radius: radius,
-            //设置段数，默认为40段
+            // 设置段数，默认为40段
             segments: 40,
           },
         });
@@ -523,10 +523,10 @@
       function searchByWidthOrHeight() {
         if (!width || !height) return;
         if (point.length < 2) return;
-        //重置页面渲染
+        // 重置页面渲染
         resetRender();
 
-        //创建搜索条件对象
+        // 创建搜索条件对象
         const requestParam = {};
         requestParam.groupID = map.focusGroupID;
         requestParam.nodeType = fengmap.FMNodeType.MODEL;
@@ -550,13 +550,13 @@
         ];
         searchRes = searchByParams(requestParam);
 
-        //渲染搜索结果表格
+        // 渲染搜索结果表格
         renderSearchResult(searchRes);
 
         // 创建矩形标注
         addRectangleMarker(point, width, height);
 
-        //添加marker
+        // 添加marker
         if (searchRes.length > 0) {
           for (let i = 0; i < searchRes.length; i++) {
             let model = searchRes[i];
@@ -570,9 +570,9 @@
        * 创建矩形标注
        **/
       function addRectangleMarker(point, width, height) {
-        //获取当前聚焦楼层
+        // 获取当前聚焦楼层
         let group = map.getFMGroup(map.focusGroupID);
-        //创建PolygonMarkerLayer
+        // 创建PolygonMarkerLayer
         if (!polygonLayer) {
           polygonLayer = new fengmap.FMPolygonMarkerLayer();
           group.addLayer(polygonLayer);
@@ -581,16 +581,16 @@
         }
         // console.log('矩形width', width, '矩形height', height);
         let rectangleMaker = new fengmap.FMPolygonMarker({
-          //设置颜色
+          // 设置颜色
           color: "#3CF9DF",
-          //设置透明度
+          // 设置透明度
           alpha: 0.2,
-          //设置边框线的宽度
+          // 设置边框线的宽度
           lineWidth: 1,
-          //设置高度
+          // 设置高度
           height: 3,
           points: {
-            //设置为矩形
+            // 设置为矩形
             type: "rectangle",
             startPoint: {
               x: point[0].x,
@@ -598,7 +598,7 @@
             },
             width: width,
             height: height,
-            //设置段数，默认为40段
+            // 设置段数，默认为40段
             segments: 40,
           },
         });
