@@ -32,12 +32,12 @@
     <!-- 引入fengmap -->
     <script src="lib/fengmap.core.min.js"></script>
     <script>
-      //获取版本号,设置title
+      // 获取版本号,设置title
       document.title = "周边查询";
 
-      //定义全局map变量
+      // 定义全局map变量
       let map = null;
-      //定义地图ID变量
+      // 定义地图ID变量
       const fmapID = "1321274646113083394";
 
       const array = [];
@@ -49,18 +49,18 @@
       let width = 0;
       let height = 0;
 
-      //定义多边形
+      // 定义多边形
       let polygonLayer = null;
-      //搜索结果列表
+      // 搜索结果列表
       let resTableDom = null;
-      //定义搜索分析类
+      // 定义搜索分析类
       let searchAnalyser = null;
 
-      //定义选中模型
+      // 定义选中模型
       let selectedModel = null;
 
       window.onload = function () {
-        //加载地图
+        // 加载地图
         openMap();
         resTableDom = document.getElementById("resTable");
       };
@@ -99,16 +99,16 @@
           key: "b8cfac0873c3d803d45aaad0632d06ef",
         };
 
-        //初始化地图对象
+        // 初始化地图对象
         map = new fengmap.FMMap(mapOptions);
 
-        //打开Fengmap服务器的地图数据和主题
+        // 打开Fengmap服务器的地图数据和主题
         map.openMapById(fmapID, function (error) {
-          //打印错误信息
+          // 打印错误信息
           console.log(error);
         });
 
-        //地图加载完成事件
+        // 地图加载完成事件
         map.on("loadComplete", function () {
           console.log("地图加载完成！");
           searchAnalyser = new fengmap.FMSearchAnalyser(map);
@@ -116,6 +116,7 @@
 
         map.on("mapClickNode", function (event) {
           if (!event.mapCoord) return;
+          // 第一次点击，将此次点击所得到的点设置为矩形选框的初识点
           if (point.length < 1) {
             x = event.mapCoord && event.mapCoord.x;
             y = event.mapCoord && event.mapCoord.y;
@@ -134,34 +135,33 @@
             // 开始监听悬停事件
             map.on("mapHoverNode", function (event) {
               console.log("模型悬停事件！");
-
+              // 如果保存点的数组中只有一个元素，则将hover获取的点放入数组中
               if (point.length === 1) {
                 point.push({
                   x: event.eventInfo.coord && event.eventInfo.coord.x,
                   y: event.eventInfo.coord && event.eventInfo.coord.y,
                 });
-              } else if (point.length === 2) {
+              } else if (point.length === 2) { // 如果保存点的数组中有两个点，则替换数组中第二个点
                 point.pop();
                 point.push({
                   x: event.eventInfo.coord && event.eventInfo.coord.x,
                   y: event.eventInfo.coord && event.eventInfo.coord.y,
                 });
-                if (point.length === 2) {
-                  let x1 = point[0].x;
-                  let y1 = point[0].y;
-                  let x2 = point[1].x;
-                  let y2 = point[1].y;
+                
+                let x1 = point[0].x;
+                let y1 = point[0].y;
+                let x2 = point[1].x;
+                let y2 = point[1].y;
 
-                  width = x2 - x1;
-                  height = y1 - y2;
-
-                  searchByWidthOrHeight();
-                }
+                width = x2 - x1;
+                height = y1 - y2;
+                // hover事件触发时进行实时查询
+                searchByWidthOrHeight();
               }
-              // console.log(point);
             });
           }
 
+          // 点击第二次时触发实时查询
           if (point.length === 2) {
             let x1 = point[0].x;
             let y1 = point[0].y;
@@ -176,9 +176,11 @@
             map.hoverFilterFunction = function () {
               return false;
             };
+            // 清空点数组
             point = [];
           }
 
+          // 点击多选元素
           if (event.nodeType === fengmap.FMNodeType.MODEL) {
             let model = event.target;
             let index = array.indexOf(model.FID);
@@ -201,13 +203,16 @@
        * 设置model颜色、透明度、边线颜色
        * */
       function setModelRender(model) {
-        let modelColor = "#FFB6C1"; //模型颜色
-        let lineColor = "#0000CD"; //模型边线颜色
-        let alpha = 1; //颜色透明度
+        // 模型颜色
+        let modelColor = "#FFB6C1";
+        // 模型边线颜色
+        let lineColor = "#0000CD";
+        // 颜色透明度
+        let alpha = 1; 
         if (model) {
-          //修改模型颜色及透明度
+          // 修改模型颜色及透明度
           model.setColor(modelColor, alpha);
-          //修改模型边线的颜色及透明度
+          // 修改模型边线的颜色及透明度
           model.setStrokeColor(lineColor, alpha);
         }
       }
@@ -217,9 +222,9 @@
        * */
       function setModelToDefault(model) {
         if (model) {
-          //将模型的颜色及透明度恢复回主题中的设置
+          // 将模型的颜色及透明度恢复回主题中的设置
           model.setColorToDefault();
-          //将模型边线的颜色及透明度恢复回主题中的设置
+          // 将模型边线的颜色及透明度恢复回主题中的设置
           model.setStrokeColorToDefault();
         }
       }
